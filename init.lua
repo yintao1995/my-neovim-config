@@ -1,17 +1,25 @@
 -- bootstrap lazy.nvim, LazyVim and your plugins
 vim.cmd.source(vim.fn.stdpath("config") .. "/vimrc")
 
-vim.g.clipboard = {
-  name = "OSC 52",
-  copy = {
-    ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
-    ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
-  },
-  paste = {
-    ["+"] = require("vim.ui.clipboard.osc52").paste("+"),
-    ["*"] = require("vim.ui.clipboard.osc52").paste("*"),
-  },
-}
+local platform = vim.loop.os_uname().sysname
+if platform == "Linux" then
+  
+elseif platform == "Darwin" then
+  vim.g.clipboard = {
+    name = "OSC 52",
+    copy = {
+      ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
+      ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
+    },
+    paste = {
+      ["+"] = require("vim.ui.clipboard.osc52").paste("+"),
+      ["*"] = require("vim.ui.clipboard.osc52").paste("*"),
+    },
+  }
+elseif platform == "Win32" then
+
+end
+
 
 require("config.lazy")
 require("config.git")
