@@ -1,0 +1,5 @@
+# --glob=*.c 表示include
+# --glob=!*.c 表示exclude
+# --glob=*.c
+--glob=!tags
+--glob=!cscope.*
