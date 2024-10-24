@@ -16,3 +16,8 @@ map("n", "<leader>fs", "<cmd>SessionSearch<cr>", { desc = "find a session" })
 
 -- 将当前文件完整路径和当前行号复制到系统剪切板
 map("n", "<leader>cf", "<cmd>let @+=expand('%:p').':'.line('.')<cr>", {desc = "copy current file path"})
+
+
+-- switch to next buffer or previous buffer
+map("n", "<leader><Left>", "<cmd>bprevious<cr>", {desc = "next buffer"})
+map("n", "<leader><Right>", "<cmd>bnext<cr>", {desc = "next buffer"})

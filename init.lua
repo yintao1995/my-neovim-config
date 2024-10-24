@@ -42,6 +42,6 @@ vim.wo.relativenumber = false
 vim.opt.foldmethod = "expr"
 vim.opt.foldexpr = "nvim_treesitter #foldexpr ()"
 vim.opt.foldlevel = 99
-
+vim.opt.shiftwidth = 4  -- tab设置为4个spaces
 
 vim.cmd("colorscheme vscode")
