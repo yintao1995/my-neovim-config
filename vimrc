@@ -27,6 +27,10 @@ set showtabline=2
 nnoremap <C-n> <C-i>
 nnoremap <C-p> <C-o>
 
+
+" 按*键可搜索当前单词; 不映射的话会自动跳到下一个单词
+noremap * :let @/ = "\\<<C-r><C-w>\\>"<cr>:set hlsearch<cr>
+
 " yw 复制当前单词; dw删除当前单词
 nnoremap yw yiw
 nnoremap dw diw
