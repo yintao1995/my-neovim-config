@@ -38,6 +38,7 @@ return {
     { "<leader>fl", "<cmd>FzfLua live_grep_glob<CR>", desc = "live grep with glob" }, -- bcm_udf_t_init -- *.c !ifa !examples 表示包含c文件, 但是去掉路径含ifa、example的文件
     -- !ifa 表示去掉完整匹配ifa目录的文件
     -- !ifa* 表示去掉正则匹配ifa*的文件, 比如ifabc也可以被去掉
+    { "<leader>fL", "<cmd>FzfLua live_grep_resume<CR>", desc = "live grep with resume" },
     { "<leader>fh", "<cmd>FzfLua help_tags<CR>", desc = "help" },
     { "<leader>fH", "<cmd>FzfLua highlights<CR>", desc = "highlights" },
     { "<leader>fm", "<cmd>FzfLua oldfiles<CR>", desc = "mru" }, -- mru: most recent used

@@ -1,5 +1,6 @@
 -- :SessionSave " saves a session based on the `cwd` in `auto_session_root_dir`
 --                在cwd下手动执行SessionSave后，退出vim时能够自动追踪
+--                存在~/.local/share/nvim/sessions
 -- :SessionSave my_session " saves a session called `my_session` in `auto_session_root_dir`
 --
 -- :SessionRestore " restores a session based on the `cwd` from `auto_session_root_dir`
