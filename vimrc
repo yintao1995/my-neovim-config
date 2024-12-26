@@ -34,3 +34,5 @@ noremap * :let @/ = "\\<<C-r><C-w>\\>"<cr>:set hlsearch<cr>
 " yw 复制当前单词; dw删除当前单词
 nnoremap yw yiw
 nnoremap dw diw
+nnoremap yl ^v$y
+

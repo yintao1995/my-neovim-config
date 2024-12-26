@@ -1,7 +1,7 @@
 -- 按 反斜杠 + z 把当前行加入bookmarks
 -- 打开bookmarks窗口:Telescope bookmarks
 return {
-  "crusj/bookmarks.nvim",
+  "yintao1995/bookmarks.nvim",
   keys = {
     { "<tab><tab>", mode = { "n" } },
   },
