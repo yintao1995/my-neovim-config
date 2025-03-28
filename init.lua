@@ -1,15 +1,25 @@
 -- bootstrap lazy.nvim, LazyVim and your plugins
 vim.cmd.source(vim.fn.stdpath("config") .. "/vimrc")
 
+
+
+
+-- 禁止通过osc52复制太多内容, 防止删除很多内容时乱码刷屏
+local function copy_to_clipboard(text)
+    if #text > 20000 then
+        print("Skip copy")
+        return
+    end
+    require("vim.ui.clipboard.osc52").copy("+")(text)
+end
 local platform = vim.loop.os_uname().sysname
 if platform == "Linux" then
-  
 elseif platform == "Darwin" then
   vim.g.clipboard = {
     name = "OSC 52",
     copy = {
-      ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
-      ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
+      ["+"] = copy_to_clipboard,
+      ["*"] = copy_to_clipboard,
     },
     paste = {
       ["+"] = require("vim.ui.clipboard.osc52").paste("+"),
@@ -17,8 +27,8 @@ elseif platform == "Darwin" then
     },
   }
 elseif platform == "Win32" then
-
 end
+
 
 vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufReadPost" }, {
   group = vim.api.nvim_create_augroup("SyslogFileType", { clear = true }),
