@@ -57,6 +57,16 @@ require("lspconfig").clangd.setup({})
 
 require("lualine").setup({})
 
+vim.api.nvim_create_autocmd({ "VimEnter" }, {
+  pattern = "*",
+  callback = function()
+    -- 检测是否处于 vimdiff 模式
+    if vim.o.diff then
+      vim.cmd.colorscheme("default") -- evening / elflord / koehler
+    end
+  end,
+})
+
 vim.g.autoformat = false  -- 关闭nvim-lspconfig默认使能的保持时自动格式化文件
 vim.o.showtabline = 2
 vim.wo.relativenumber = false
