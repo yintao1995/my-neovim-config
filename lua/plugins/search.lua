@@ -56,7 +56,7 @@ return {
     { "<leader>fs", "<cmd>FzfLua lsp_document_symbols<CR>", desc = "lsp_document_symbols" },
     { "<leader>fS", "<cmd>FzfLua lsp_workspace_symbols<CR>", desc = "lsp_workspace_symbols" },
 
-    { "<C-f>", "<cmd>FzfLua grep_curbuf<CR>", desc = "lines" },
+    { "<leader>fW", "<cmd>FzfLua grep_curbuf<CR>", desc = "lines" },
 
     { "<leader>hc", "<cmd>FzfLua command_history<CR>", desc = "find command history" },
     { "<leader>hs", "<cmd>FzfLua search_history<CR>", desc = "find search history" },

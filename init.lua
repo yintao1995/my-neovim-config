@@ -39,6 +39,19 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufReadPost" }, {
   end,
 })
 
+-- 定义一个函数来删除包含剪贴板内容的所有行
+function _G.delete_lines_with_clipboard_content()
+  -- 获取系统剪贴板的内容
+  local clipboard_content = vim.fn.getreg("+")
+  if clipboard_content == "" then
+    vim.notify("Clipboard is empty!", vim.log.levels.ERROR)
+    return
+  end
+  local escaped_content = vim.pesc(clipboard_content)
+  local command = ":g/" .. escaped_content .. "/d"
+  vim.cmd(command)
+  vim.notify(string.format("Deleted lines containing: %s", clipboard_content), vim.log.levels.INFO)
+end
 
 
 require("config.lazy")
@@ -46,7 +59,6 @@ require("config.git")
 require("config.test")
 require("config.lsp")
 require("config.session")
--- require("config.project")
 require("config.bookmarks")
 require("config.others")
 require("config.codesnap")
@@ -75,7 +87,7 @@ vim.opt.foldexpr = "nvim_treesitter #foldexpr ()"
 vim.opt.foldlevel = 99
 vim.opt.shiftwidth = 4  -- tab设置为4个spaces
 vim.o.sessionoptions="blank,buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
-vim.g.bigfile_size = 1024 * 1024 * 50 -- 设置大文件为50MB, 超过限制的大文件会自动关闭语法高亮等
+vim.g.bigfile_size = 1024 * 1024 * 10 -- 设置大文件为50MB, 超过限制的大文件会自动关闭语法高亮等
 
 -- vim.g.snacks_animate = false -- 默认使能snack动画, 但是搜索时不及时显示匹配序号
 vim.cmd("colorscheme vscode")

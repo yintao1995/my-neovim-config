@@ -27,3 +27,6 @@ map("n", "<leader>gb", "<cmd>Gitsigns blame<cr>", { desc = "git blames all lines
 
 -- override quit all command, save session before that
 map("n", "<leader>qq", "<cmd>SessionSave<cr>|<cmd>qa<cr>", { desc = "Save session & Quit All" })
+
+map('n', '<leader>ds', '<cmd>lua delete_lines_with_clipboard_content()<CR>', { noremap = true, silent = true, desc = "delete all lines contains clipboard content" })
+
