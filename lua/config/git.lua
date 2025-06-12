@@ -44,3 +44,4 @@ end, {})
 local map = vim.keymap.set
 -- find the commit of current line, and open all diff view of that commit
 map("n", "<leader>ga", "<cmd>OpenCommitInfoOfCurrLine<cr>", { desc = "diffview of commit of current line" })
+map("n", "<leader>gr", "<cmd>Gitsigns reset_buffer<cr>", { desc = "restore current buffer" })
