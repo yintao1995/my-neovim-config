@@ -18,6 +18,7 @@ return {
     },
     files = {
       path_shorten = 10,
+      rg_opts      = [[--color=never --hidden --files -g "!.git" -g "!.cache"]], -- fzf搜索文件时过滤某些目录
     },
     diagnostics = {
       split = "belowright new",

@@ -12,6 +12,12 @@ local function copy_to_clipboard(text)
     end
     require("vim.ui.clipboard.osc52").copy("+")(text)
 end
+local function paste()
+  return {
+    vim.split(vim.fn.getreg(''), '\n'),
+    vim.fn.getregtype(''),
+  }
+end
 local platform = vim.loop.os_uname().sysname
 if platform == "Linux" then
 elseif platform == "Darwin" then
@@ -22,8 +28,8 @@ elseif platform == "Darwin" then
       ["*"] = copy_to_clipboard,
     },
     paste = {
-      ["+"] = require("vim.ui.clipboard.osc52").paste("+"),
-      ["*"] = require("vim.ui.clipboard.osc52").paste("*"),
+      ["+"] = paste,
+      ["*"] = paste,
     },
   }
 elseif platform == "Win32" then
