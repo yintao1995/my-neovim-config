@@ -6,7 +6,7 @@ local map = vim.keymap.set
 map("n", "<leader>gH", "<cmd>DiffviewFileHistory<cr>", { desc = "git history of branch" })
 map("n", "<leader>gf", "<cmd>DiffviewFileHistory %<cr>", { desc = "git history of file" })
 
-map("n", "<leader>fs", "<cmd>SessionSearch<cr>", { desc = "find a session" })
+map("n", "<leader>fs", "<cmd>AutoSession search<cr>", { desc = "find a session" })
 
 -- 左侧neo-tree目录下按backspace键可退至上一层目录
 --
@@ -37,4 +37,6 @@ map("n", "<leader>fd", "<cmd>FzfLua tags_grep_cword<cr>", { desc = "grep definit
 -- <leader>ft   和  ctrl + / 都可以打开悬浮终端, 但是后者更方便，再次按时隐藏
 
 
+map("n", "<leader>gd", "<cmd>Lspsaga peek_definition<cr>", { desc = "lspsaga: go to peek_definition" })
 -- <leader>sr  插件grug-far.nvim, 查找并替换
+map("n", "<leader>fB", "<cmd>Telescope bookmarks<cr>", { desc = "open bookmarks list" })

@@ -26,14 +26,15 @@ vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", function()
 
     local blame = assert(bcache.blame)
 
-    -- for i, hl in pairs(blame) do
+    -- for i, hl in pairs(blame.entries) do
     --     local sha = hl.commit.abbrev_sha
     --     print(i, sha)
     -- end
     local blm_win = api.nvim_get_current_win()
 
     local cursor = unpack(api.nvim_win_get_cursor(blm_win))
-    local cur_sha = blame[cursor].commit.abbrev_sha
+    local entry = blame.entries[cursor]
+    local cur_sha = blame.entries[cursor].commit.abbrev_sha
     -- print(cur_sha)
     local command = string.format("DiffviewOpen %s^!", cur_sha)
     vim.cmd(command)
