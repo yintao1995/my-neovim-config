@@ -62,7 +62,6 @@ require("config.lsp")
 require("config.session")
 require("config.bookmarks")
 require("config.others")
-require("config.codesnap")
 
 require("lspconfig").gopls.setup({})
 require("lspconfig").pyright.setup({})
