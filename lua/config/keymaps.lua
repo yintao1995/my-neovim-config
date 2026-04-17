@@ -34,9 +34,13 @@ map('n', '<leader>ds', '<cmd>lua delete_lines_with_clipboard_content()<CR>', { n
 
 map("n", "<leader>ft", "<cmd>FzfLua tags_live_grep<cr>", { desc = "live grep of all ctags" })
 map("n", "<leader>fd", "<cmd>FzfLua tags_grep_cword<cr>", { desc = "grep definitions from ctags of current word" })
--- <leader>ft   和  ctrl + / 都可以打开悬浮终端, 但是后者更方便，再次按时隐藏
 
 
 map("n", "<leader>gd", "<cmd>Lspsaga peek_definition<cr>", { desc = "lspsaga: go to peek_definition" })
 -- <leader>sr  插件grug-far.nvim, 查找并替换
 map("n", "<leader>fB", "<cmd>Telescope bookmarks<cr>", { desc = "open bookmarks list" })
+
+
+-- 内嵌终端
+-- -- ctrl + / 打开内嵌终端, 再次按时隐藏; 默认为1
+-- -- 先按一下数字, 比如2, 再按 ctrl + /, 此时打开的是2号终端, 与1号终端独立。

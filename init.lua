@@ -88,6 +88,9 @@ vim.opt.foldlevel = 99
 vim.opt.shiftwidth = 4 -- tab设置为4个spaces
 vim.o.sessionoptions = "blank,buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
 vim.g.bigfile_size = 1024 * 1024 * 10 -- 设置大文件为50MB, 超过限制的大文件会自动关闭语法高亮等
+vim.o.signcolumn = "no" -- 行号不会出现灯泡, 从而把代码往右挤
+
+
 
 -- 1. 定义你想看的符号
 vim.opt.listchars = {
