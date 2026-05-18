@@ -16,6 +16,42 @@ map("n", "<leader>fs", "<cmd>AutoSession search<cr>", { desc = "find a session" 
 -- 将当前文件完整路径和当前行号复制到系统剪切板
 map("n", "<leader>cf", "<cmd>let @+=expand('%:p').':'.line('.')<cr>", {desc = "copy current file path"})
 
+-- 复制文件相对路径(+行号范围)到系统剪切板, 如 lua/config/keymaps.lua:35-49
+-- 同时将结果发送到最近使用的 terminal实现文件自动引用, 以方便AI沟通。如 @lua/config/keymaps.lua:35-49
+local function send_to_last_terminal(text)
+  local terms = Snacks.terminal.list()
+  if #terms == 0 then return end
+  local last_visible = nil
+  for _, term in ipairs(terms) do
+    if term:win_valid() then
+      last_visible = term
+    end
+  end
+  if not last_visible then return end
+  local chan = vim.api.nvim_buf_get_var(last_visible.buf, "terminal_job_id")
+  vim.api.nvim_chan_send(chan, "@" .. text .. " ")
+end
+
+map("n", "<leader>r", function()
+  local rel_path = vim.fn.expand("%:.")
+  vim.fn.setreg("+", rel_path)
+  send_to_last_terminal(rel_path)
+  vim.notify("已复制并引用: " .. rel_path)
+end, { desc = "(reference) copy relative file path" })
+
+map("v", "<leader>r", function()
+  local start_line = vim.fn.line("v")
+  local end_line = vim.fn.line(".")
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+  local rel_path = vim.fn.expand("%:.")
+  local result = rel_path .. ":" .. start_line .. "-" .. end_line
+  vim.fn.setreg("+", result)
+  send_to_last_terminal(result)
+  vim.notify("已复制并引用: " .. result)
+end, { desc = "(reference) copy relative path with selected line range" })
+
 
 -- switch to next buffer or previous buffer
 map("n", "<leader><Left>", "<cmd>bprevious<cr>", {desc = "next buffer"})
