@@ -119,6 +119,23 @@ vim.keymap.set("n", "<leader>t", function()
     confirm = function(picker, item)
       picker:close()
       if item then
+        for _, t in ipairs(Snacks.terminal.list()) do
+          if t:win_valid() then
+            if t == item.term then
+              t:focus()
+              return
+            end
+            local existing_win = t.win
+            if not existing_win then return end
+            t.win = nil
+            vim.api.nvim_win_set_buf(existing_win, item.term.buf)
+            item.term.win = existing_win
+            vim.wo[existing_win].number = false
+            vim.wo[existing_win].relativenumber = false
+            vim.api.nvim_set_current_win(existing_win)
+            return
+          end
+        end
         item.term:show():focus()
       end
     end,
