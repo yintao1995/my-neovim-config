@@ -10,37 +10,30 @@ require("diffview").setup({
 
 local gitsigns = require('gitsigns')
 local cache = require('gitsigns.cache').cache
-local log = require('gitsigns.debug.log')
+local async = require('gitsigns.async')
 
 local api = vim.api
 
-vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", function()
+vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", async.create(0, function()
     local bufnr = api.nvim_get_current_buf()
     local bcache = cache[bufnr]
     if not bcache then
-        log.dprint('Not attached')
         return
     end
     bcache:get_blame()
 
+    local blame = bcache.blame
+    if not blame then
+        return
+    end
 
-    local blame = assert(bcache.blame)
-
-    -- for i, hl in pairs(blame.entries) do
-    --     local sha = hl.commit.abbrev_sha
-    --     print(i, sha)
-    -- end
     local blm_win = api.nvim_get_current_win()
-
     local cursor = unpack(api.nvim_win_get_cursor(blm_win))
     local entry = blame.entries[cursor]
-    local cur_sha = blame.entries[cursor].commit.abbrev_sha
-    -- print(cur_sha)
+    local cur_sha = entry.commit.abbrev_sha
     local command = string.format("DiffviewOpen %s^!", cur_sha)
     vim.cmd(command)
-
-    
-end, {})
+end), {})
 
 local map = vim.keymap.set
 -- find the commit of current line, and open all diff view of that commit
