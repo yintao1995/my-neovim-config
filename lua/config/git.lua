@@ -14,7 +14,7 @@ local async = require('gitsigns.async')
 
 local api = vim.api
 
-vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", async.create(0, function()
+vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", function() async.run(function()
     local bufnr = api.nvim_get_current_buf()
     local bcache = cache[bufnr]
     if not bcache then
@@ -33,7 +33,7 @@ vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", async.create(0, fun
     local cur_sha = entry.commit.abbrev_sha
     local command = string.format("DiffviewOpen %s^!", cur_sha)
     vim.cmd(command)
-end), {})
+end) end, {})
 
 local map = vim.keymap.set
 -- find the commit of current line, and open all diff view of that commit
