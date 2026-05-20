@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Fetch(domain:github.com)",
+      "Fetch(domain:raw.githubusercontent.com)",
+      "Write(/lua/plugins/**)",
+      "Edit(/lua/plugins/**)",
+      "Edit(/lua/config/**)",
+      "Edit(/init.lua)",
+      "Fetch(domain:nvimdev.github.io)",
+      "Write(/lua/config/**)"
+    ]
+  }
+}

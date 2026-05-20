@@ -62,6 +62,7 @@ require("config.lsp")
 require("config.session")
 require("config.bookmarks")
 require("config.others")
+require("config.terminal")
 
 require("lspconfig").gopls.setup({})
 require("lspconfig").pyright.setup({})
