@@ -18,7 +18,17 @@ map("n", "<leader>cf", "<cmd>let @+=expand('%:p').':'.line('.')<cr>", {desc = "c
 
 -- 复制文件相对路径(+行号范围)到系统剪切板, 如 lua/config/keymaps.lua:35-49
 -- 同时将结果发送到最近使用的 terminal实现文件自动引用, 以方便AI沟通。如 @lua/config/keymaps.lua:35-49
+local function send_to_tmux_right_pane(text)
+  if not vim.env.TMUX or vim.env.TMUX == "" then return false end
+  local cur = vim.fn.system({ "tmux", "display-message", "-p", "#{pane_id}" }):gsub("%s+", "")
+  local right = vim.fn.system({ "tmux", "display-message", "-p", "-t", "{right}", "#{pane_id}" }):gsub("%s+", "")
+  if right == "" or right == cur then return false end
+  vim.fn.system({ "tmux", "send-keys", "-t", right, "@" .. text .. " " })
+  return true
+end
+
 local function send_to_last_terminal(text)
+  if send_to_tmux_right_pane(text) then return end
   local terms = Snacks.terminal.list()
   if #terms == 0 then return end
   local last_visible = nil
@@ -67,6 +77,14 @@ map("n", "<leader>qq", "<cmd>SessionSave<cr>|<cmd>qa<cr>", { desc = "Save sessio
 map('n', '<leader>ds', '<cmd>lua delete_lines_with_clipboard_content()<CR>', { noremap = true, silent = true, desc = "delete all lines contains clipboard content" })
 
 
+
+map("n", "<leader>T", function()
+  if vim.env.TMUX and vim.env.TMUX ~= "" then
+    vim.fn.system("tmux split-window -h -p 30")
+  else
+    vim.notify("当前不在 tmux 环境中", vim.log.levels.WARN)
+  end
+end, { desc = "tmux: open 3/10 width pane on right" })
 
 map("n", "<leader>ft", "<cmd>FzfLua tags_live_grep<cr>", { desc = "live grep of all ctags" })
 map("n", "<leader>fd", "<cmd>FzfLua tags_grep_cword<cr>", { desc = "grep definitions from ctags of current word" })
