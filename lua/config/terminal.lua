@@ -1,56 +1,91 @@
 -- ============================================================
--- terminal 与 tmux pane 相关的快捷键和函数
+-- terminal.lua
+--
+-- 统一管理两类内嵌终端:
+--   1) Snacks.terminal (浮动/分割窗口的 nvim 内嵌 terminal)
+--   2) tmux-pane      (主 window 右侧 pane, 隐藏的存放在 _parked window)
+--
+-- 设计模型 (见 design.md):
+--   - 全局模式 M.mode ∈ {"snacks","tmux"}, 决定新建/显示走哪类终端
+--   - 5 个业务操作: toggle_mode / new_terminal / toggle_terminal /
+--                   list_terminals / send_reference
 -- ============================================================
-local map = vim.keymap.set
+
+local M = {}
 
 local PARKED_WIN = "_parked"
 
+-- 终端窗口占主窗口的宽度比例 (0~1). 调整这一处即可同步两类终端
+local WIDTH_RATIO = 0.33
+local WIDTH_PERCENT = string.format("%d%%", math.floor(WIDTH_RATIO * 100))
+
+M.mode = (vim.env.TMUX ~= nil and vim.env.TMUX ~= "") and "tmux" or "snacks"
+M._mru = { snacks = {}, tmux = {} } -- 末尾元素为最近活跃
+
 -- ============================================================
--- 通用工具函数
+-- 通用 tmux 工具
 -- ============================================================
 
--- 是否处于 tmux 环境, 不在则提示
 local function in_tmux()
-  if not vim.env.TMUX or vim.env.TMUX == "" then
+  return vim.env.TMUX ~= nil and vim.env.TMUX ~= ""
+end
+
+local function require_tmux()
+  if not in_tmux() then
     vim.notify("当前不在 tmux 环境中", vim.log.levels.WARN)
     return false
   end
   return true
 end
 
--- 执行 tmux 命令
 local function tmux_run(args)
   return vim.fn.system(vim.list_extend({ "tmux" }, args))
 end
 
--- 执行 tmux 命令并返回去除尾部空白的字符串
 local function tmux_get(args)
   return (tmux_run(args) or ""):gsub("%s+$", "")
 end
 
--- 当前 session 名
+-- nvim 自身所在的 pane id (由 tmux 注入到环境变量 TMUX_PANE)
+-- 一旦 nvim 启动就锚定, 不会因 client 切换 window 而漂移
+local function nvim_pane_id()
+  return vim.env.TMUX_PANE or ""
+end
+
 local function current_session()
+  local nv = nvim_pane_id()
+  if nv ~= "" then
+    return tmux_get({ "display-message", "-p", "-t", nv, "#{session_name}" })
+  end
   return tmux_get({ "display-message", "-p", "#{session_name}" })
 end
 
--- 当前 pane id
-local function current_pane_id()
-  return tmux_get({ "display-message", "-p", "#{pane_id}" })
-end
-
--- 主window右侧显示槽 pane id (与当前pane不同的右侧pane), 不存在返回 nil
+-- 主 window (nvim 所在 window) 右侧 slot pane id, 不存在返回 nil
+-- 实现: 列出 nvim 所在 window 的所有 pane, 排除 nvim 自身, 取 pane_left 最大的那个
 local function get_right_pane_id()
-  local cur = current_pane_id()
-  local right = tmux_get({ "display-message", "-p", "-t", "{right}", "#{pane_id}" })
-  if right == "" or right == cur then return nil end
-  return right
+  local nv = nvim_pane_id()
+  if nv == "" then return nil end
+  local out = tmux_get({
+    "list-panes", "-t", nv,
+    "-F", "#{pane_id}\t#{pane_left}",
+  })
+  local best_id, best_left = nil, -1
+  for line in out:gmatch("[^\n]+") do
+    local id, left = line:match("^(%S+)\t(%d+)$")
+    if id and id ~= nv then
+      local l = tonumber(left) or 0
+      if l > best_left then
+        best_id, best_left = id, l
+      end
+    end
+  end
+  return best_id
 end
 
 -- ============================================================
--- parking window 相关
+-- parking window 工具
 -- ============================================================
 
--- parking window 是否存在
 local function parked_window_exists()
   local out = tmux_get({ "list-windows", "-t", current_session(), "-F", "#{window_name}" })
   for line in out:gmatch("[^\n]+") do
@@ -59,14 +94,12 @@ local function parked_window_exists()
   return false
 end
 
--- 确保 parking window 存在
 local function ensure_parked_window()
   if not parked_window_exists() then
     tmux_run({ "new-window", "-d", "-n", PARKED_WIN })
   end
 end
 
--- 列出 parking window 中所有 pane
 local function list_parked_panes()
   if not parked_window_exists() then return {} end
   local target = current_session() .. ":" .. PARKED_WIN
@@ -84,246 +117,293 @@ local function list_parked_panes()
   return items
 end
 
--- 在 parking window 中新建一个后台 pane
-local function create_parked_pane()
-  ensure_parked_window()
-  local target = current_session() .. ":" .. PARKED_WIN
-  tmux_run({ "split-window", "-d", "-t", target, "-h" })
+-- ============================================================
+-- MRU helpers
+-- ============================================================
+
+local function mru_touch(kind, key)
+  local q = M._mru[kind]
+  for i, v in ipairs(q) do
+    if v == key then table.remove(q, i); break end
+  end
+  table.insert(q, key)
 end
 
--- 关闭一个 parked pane
-local function kill_parked_pane(pane_id)
-  tmux_run({ "kill-pane", "-t", pane_id })
+local function mru_remove(kind, key)
+  local q = M._mru[kind]
+  for i, v in ipairs(q) do
+    if v == key then table.remove(q, i); return end
+  end
+end
+
+local function mru_last(kind)
+  local q = M._mru[kind]
+  return q[#q]
 end
 
 -- ============================================================
--- 主window右侧显示槽相关
+-- 后端 A: snacks-terminal
 -- ============================================================
 
--- 创建主window右侧显示槽 (1/4宽), 创建后焦点会切回左侧, 返回新pane id
-local function create_right_pane()
-  tmux_run({ "split-window", "-h", "-p", "25" })
-  local new_id = current_pane_id()
-  tmux_run({ "select-pane", "-L" })
+local function snacks_list()
+  return Snacks.terminal.list()
+end
+
+local function snacks_visible_terms()
+  local out = {}
+  for _, t in ipairs(snacks_list()) do
+    if t:win_valid() then table.insert(out, t) end
+  end
+  return out
+end
+
+local function snacks_hide_all()
+  for _, t in ipairs(snacks_visible_terms()) do
+    t:hide()
+  end
+end
+
+-- 把 term 显示并聚焦; 如果当前已有其他 snacks term 显示, 复用其窗口
+local function snacks_show(term)
+  for _, t in ipairs(snacks_list()) do
+    if t == term and t:win_valid() then
+      t:focus()
+      mru_touch("snacks", t.buf)
+      return
+    end
+  end
+  -- 复用已有 visible window 以避免叠开多个
+  for _, t in ipairs(snacks_list()) do
+    if t:win_valid() and t ~= term then
+      local existing_win = t.win
+      t.win = nil
+      if existing_win and vim.api.nvim_win_is_valid(existing_win) then
+        vim.api.nvim_win_set_buf(existing_win, term.buf)
+        term.win = existing_win
+        vim.wo[existing_win].number = false
+        vim.wo[existing_win].relativenumber = false
+        vim.api.nvim_set_current_win(existing_win)
+        mru_touch("snacks", term.buf)
+        return
+      end
+    end
+  end
+  term:show():focus()
+  mru_touch("snacks", term.buf)
+end
+
+-- 创建新 snacks terminal; count 用于区分多个独立实例
+local function snacks_new(count)
+  count = count or 1
+  -- 通过 env 注入 count, Snacks.terminal 内置按 cmd+cwd+env 索引, 同 count 复用同实例
+  local term = Snacks.terminal.get(nil, {
+    create = true,
+    win = { position = "right", width = WIDTH_RATIO },
+    env = { TERMINAL_SLOT = tostring(count) },
+  })
+  if term then mru_touch("snacks", term.buf) end
+  return term
+end
+
+-- ============================================================
+-- 后端 B: tmux-pane
+-- ============================================================
+
+local function tmux_create_right_pane()
+  local nv = nvim_pane_id()
+  if nv == "" then return nil end
+  -- 在 nvim 所在 pane 右侧 split, 不切换焦点 (-d)
+  -- -P 打印新 pane 的 id
+  local new_id = tmux_get({ "split-window", "-h", "-d", "-l", WIDTH_PERCENT, "-t", nv, "-P", "-F", "#{pane_id}" })
+  if new_id == "" then return nil end
   return new_id
 end
 
--- 打开/聚焦主window右侧显示槽
-local function open_or_focus_right_pane()
-  ensure_parked_window()
+local function tmux_show_pane(pane_id)
   local slot = get_right_pane_id()
-  if not slot then
-    create_right_pane()
+  if slot then
+    -- 已有 slot: swap 把目标 pane 换到右侧, 原 slot 进入 parking
+    tmux_run({ "swap-pane", "-d", "-s", pane_id, "-t", slot })
   else
-    tmux_run({ "select-pane", "-t", slot })
+    -- 无 slot: 直接 join-pane 把 parked pane 移到 nvim 右侧
+    local nv = nvim_pane_id()
+    tmux_run({ "join-pane", "-d", "-h", "-l", WIDTH_PERCENT, "-s", pane_id, "-t", nv })
   end
+  mru_touch("tmux", pane_id)
 end
 
--- 把指定 parked pane swap 到右侧显示槽
-local function show_parked_pane_on_right(pane_id)
-  local slot = get_right_pane_id() or create_right_pane()
-  tmux_run({ "swap-pane", "-s", pane_id, "-t", slot })
-  tmux_run({ "select-pane", "-t", slot })
-end
-
--- 把右侧显示槽 pane 移回 parking window (隐藏)
-local function hide_right_pane()
+local function tmux_hide_right()
   local slot = get_right_pane_id()
-  if not slot then
-    vim.notify("右侧没有显示槽 pane", vim.log.levels.WARN)
-    return
-  end
+  if not slot then return end
   ensure_parked_window()
   local target = current_session() .. ":" .. PARKED_WIN
   tmux_run({ "join-pane", "-d", "-h", "-s", slot, "-t", target })
-  vim.notify("已隐藏右侧 pane")
 end
 
--- ============================================================
--- 文件引用发送
--- ============================================================
-
--- 把文本作为 @引用 发送到右侧 tmux pane, 成功返回 true
-local function send_reference_to_right_pane(text)
-  if not vim.env.TMUX or vim.env.TMUX == "" then return false end
-  local right = get_right_pane_id()
-  if not right then return false end
-  vim.fn.system({ "tmux", "send-keys", "-t", right, "@" .. text .. " " })
-  return true
-end
-
--- 把文本作为 @引用 发送到最近显示的 snacks 内嵌 terminal
-local function send_reference_to_last_terminal(text)
-  local terms = Snacks.terminal.list()
-  if #terms == 0 then return end
-  local last_visible = nil
-  for _, term in ipairs(terms) do
-    if term:win_valid() then
-      last_visible = term
-    end
-  end
-  if not last_visible then return end
-  local chan = vim.api.nvim_buf_get_var(last_visible.buf, "terminal_job_id")
-  vim.api.nvim_chan_send(chan, "@" .. text .. " ")
-end
-
--- 优先发送到右侧 tmux pane, 否则发送到最近内嵌 terminal
-local function send_reference(text)
-  if send_reference_to_right_pane(text) then return end
-  send_reference_to_last_terminal(text)
-end
-
--- 引用当前文件相对路径
-local function reference_current_file()
-  local rel_path = vim.fn.expand("%:.")
-  vim.fn.setreg("+", rel_path)
-  send_reference(rel_path)
-  vim.notify("已复制并引用: " .. rel_path)
-end
-
--- 引用当前文件相对路径 + 选中行号范围
-local function reference_selected_range()
-  local start_line = vim.fn.line("v")
-  local end_line = vim.fn.line(".")
-  if start_line > end_line then
-    start_line, end_line = end_line, start_line
-  end
-  local rel_path = vim.fn.expand("%:.")
-  local result = rel_path .. ":" .. start_line .. "-" .. end_line
-  vim.fn.setreg("+", result)
-  send_reference(result)
-  vim.notify("已复制并引用: " .. result)
-end
-
--- ============================================================
--- pickers
--- ============================================================
-
--- picker: 选择 parked pane 显示到右侧
-local function pick_parked_pane()
-  if not in_tmux() then return end
+-- 新建 pane (直接在右侧创建, 不走 parking)
+local function tmux_new_pane()
   ensure_parked_window()
-  local panes = list_parked_panes()
-  if #panes == 0 then
-    vim.notify("parking 中没有 pane, 先用 <leader>Tn 创建", vim.log.levels.WARN)
+  -- 如果右侧已经有 slot, 先把它收回 parking
+  if get_right_pane_id() then
+    tmux_hide_right()
+  end
+  local new_id = tmux_create_right_pane()
+  mru_touch("tmux", new_id)
+  return new_id
+end
+
+-- 列出全部 tmux pane: 右侧 slot (若有) + parking 内的
+local function tmux_list_all_panes()
+  if not in_tmux() then return {} end
+  local panes = {}
+  local right = get_right_pane_id()
+  if right then
+    local out = tmux_get({
+      "display-message", "-p", "-t", right,
+      "-F", "#{pane_id}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}",
+    })
+    local id, cmd, title, path = out:match("^(%S+)\t([^\t]*)\t([^\t]*)\t(.*)$")
+    if id then
+      table.insert(panes, { id = id, cmd = cmd or "", title = title or "", path = path or "", visible = true })
+    end
+  end
+  for _, p in ipairs(list_parked_panes()) do
+    p.visible = false
+    table.insert(panes, p)
+  end
+  return panes
+end
+
+local function tmux_kill_pane(pane_id)
+  tmux_run({ "kill-pane", "-t", pane_id })
+  mru_remove("tmux", pane_id)
+end
+
+-- ============================================================
+-- 统一 API
+-- ============================================================
+
+-- 当前主窗口右侧是否已经显示了一个内嵌终端 (任意类型)
+function M.is_terminal_visible()
+  if #snacks_visible_terms() > 0 then return "snacks" end
+  if in_tmux() and get_right_pane_id() then return "tmux" end
+  return nil
+end
+
+-- 把文本发送给当前可见终端, 没有可见则返回 false
+local function send_to_visible(text)
+  local kind = M.is_terminal_visible()
+  if kind == "tmux" then
+    local right = get_right_pane_id()
+    if not right then return false end
+    vim.fn.system({ "tmux", "send-keys", "-t", right, text })
+    return true
+  elseif kind == "snacks" then
+    local terms = snacks_visible_terms()
+    local last = terms[#terms]
+    if not last then return false end
+    local ok, chan = pcall(vim.api.nvim_buf_get_var, last.buf, "terminal_job_id")
+    if not ok or not chan then return false end
+    vim.api.nvim_chan_send(chan, text)
+    return true
+  end
+  return false
+end
+
+-- ============================================================
+-- 业务操作
+-- ============================================================
+
+-- 操作 1: 切换全局模式
+function M.toggle_mode()
+  if M.mode == "snacks" then
+    if not require_tmux() then return end
+    M.mode = "tmux"
+  else
+    M.mode = "snacks"
+  end
+  vim.notify("terminal mode -> " .. M.mode)
+end
+
+-- 操作 2: 新建终端 (按当前模式)
+-- 若当前已有可见终端, 先隐藏再显示新建的
+function M.new_terminal(count)
+  count = count or 1
+  local visible = M.is_terminal_visible()
+
+  if M.mode == "tmux" then
+    if not require_tmux() then return end
+    -- 隐藏所有 snacks 可见终端
+    snacks_hide_all()
+    -- tmux_new_pane 内部会处理右侧旧 pane
+    tmux_new_pane()
+  else
+    -- snacks 模式
+    if visible == "tmux" then
+      tmux_hide_right()
+    end
+    -- 新建 snacks 可能复用同 count 实例; 隐藏其他可见后再 show 它
+    local term = snacks_new(count)
+    if not term then
+      vim.notify("创建 snacks terminal 失败", vim.log.levels.ERROR)
+      return
+    end
+    -- 隐藏其他 visible terms 后显示这个
+    for _, t in ipairs(snacks_visible_terms()) do
+      if t ~= term then t:hide() end
+    end
+    snacks_show(term)
+  end
+end
+
+-- 操作 3: 显示/隐藏内嵌终端
+function M.toggle_terminal()
+  local visible = M.is_terminal_visible()
+  if visible == "snacks" then
+    snacks_hide_all()
+    return
+  elseif visible == "tmux" then
+    tmux_hide_right()
     return
   end
 
-  local function build_entries(list)
-    local entries = {}
-    for i, p in ipairs(list) do
-      local path = p.path ~= "" and vim.fn.fnamemodify(p.path, ":~") or ""
-      entries[i] = { text = path, pane = p }
-    end
-    return entries
-  end
-
-  local entries = build_entries(panes)
-
-  Snacks.picker.pick({
-    source = "tmux_parked",
-    title = "Parked Panes | <ctrl-x> 关闭",
-    finder = function() return entries end,
-    format = function(item) return { { item.text, "Normal" } } end,
-    preview = function(ctx)
-      ctx.preview:reset()
-      local pane_id = ctx.item and ctx.item.pane and ctx.item.pane.id
-      if not pane_id then return end
-      ctx.preview:set_title("pane " .. pane_id)
-      Snacks.picker.preview.cmd({ "tmux", "capture-pane", "-t", pane_id, "-p", "-e", "-J" }, ctx)
-    end,
-    confirm = function(picker, item)
-      picker:close()
-      if not item then return end
-      show_parked_pane_on_right(item.pane.id)
-    end,
-    actions = {
-      kill_parked = function(picker, item)
-        if not item then return end
-        kill_parked_pane(item.pane.id)
-        vim.schedule(function()
-          entries = build_entries(list_parked_panes())
-          picker:find({ refresh = true })
-        end)
-      end,
-    },
-    win = {
-      input = { keys = { ["<C-x>"] = { "kill_parked", mode = { "n", "i" } } } },
-      list = { keys = { ["<C-x>"] = "kill_parked" } },
-    },
-  })
-end
-
--- picker: 列出并选择 snacks 内嵌 terminal
-local function pick_terminal()
-  local function build_items()
-    local items = {}
-    for _, term in ipairs(Snacks.terminal.list()) do
-      local info = vim.b[term.buf].snacks_terminal
-      if info then
-        local cmd_str = type(info.cmd) == "table" and table.concat(info.cmd, " ") or (info.cmd or "shell")
-        local cwd_str = info.cwd and vim.fn.fnamemodify(info.cwd, ":~") or vim.fn.getcwd()
-        local visible = term:win_valid() and "[显示]" or "[隐藏]"
-        table.insert(items, {
-          text = string.format("#%d  %s  %s  %s", info.id, cmd_str, cwd_str, visible),
-          buf = term.buf,
-          term = term,
-          info = info,
-        })
+  -- 没有可见终端, 按当前模式恢复最近活跃的; 若没有则新建
+  if M.mode == "tmux" then
+    if not require_tmux() then return end
+    local last_id = mru_last("tmux")
+    if last_id then
+      -- 校验 pane 是否仍然存在
+      local found = false
+      for _, p in ipairs(list_parked_panes()) do
+        if p.id == last_id then found = true; break end
+      end
+      if found then
+        tmux_show_pane(last_id)
+        return
       end
     end
-    return items
-  end
-
-  if #Snacks.terminal.list() == 0 then
-    vim.notify("没有已打开的 terminal", vim.log.levels.WARN)
-    return
-  end
-
-  Snacks.picker.pick({
-    source = "terminals",
-    title = "Terminals | <ctrl-x> to close",
-    finder = build_items,
-    format = function(item) return { { item.text, "Normal" } } end,
-    confirm = function(picker, item)
-      picker:close()
-      if not item then return end
-      for _, t in ipairs(Snacks.terminal.list()) do
-        if t:win_valid() then
-          if t == item.term then
-            t:focus()
-            return
-          end
-          local existing_win = t.win
-          if not existing_win then return end
-          t.win = nil
-          vim.api.nvim_win_set_buf(existing_win, item.term.buf)
-          item.term.win = existing_win
-          vim.wo[existing_win].number = false
-          vim.wo[existing_win].relativenumber = false
-          vim.api.nvim_set_current_win(existing_win)
-          return
-        end
+    tmux_new_pane()
+  else
+    local last_buf = mru_last("snacks")
+    local target
+    if last_buf then
+      for _, t in ipairs(snacks_list()) do
+        if t.buf == last_buf then target = t; break end
       end
-      item.term:show():focus()
-    end,
-    actions = {
-      close_terminal = function(picker, item)
-        if not item then return end
-        picker.preview:reset()
-        item.term:close()
-        vim.schedule(function() picker:find({ refresh = true }) end)
-      end,
-    },
-    win = {
-      input = { keys = { ["<C-x>"] = { "close_terminal", mode = { "n", "i" } } } },
-      list = { keys = { ["<C-x>"] = "close_terminal" } },
-    },
-  })
+    end
+    if not target then
+      target = snacks_list()[1]
+    end
+    if target then
+      snacks_show(target)
+    else
+      M.new_terminal(1)
+    end
+  end
 end
 
--- picker: 合并显示 snacks terminal + tmux parked pane
-local function pick_terminal_or_pane()
+-- 操作 4: 列出所有终端 (合并 picker)
+function M.list_terminals()
   local function build_term_entry(term)
     local info = vim.b[term.buf].snacks_terminal
     if not info then return nil end
@@ -341,35 +421,34 @@ local function pick_terminal_or_pane()
 
   local function build_pane_entry(pane)
     local path = pane.path ~= "" and vim.fn.fnamemodify(pane.path, ":~") or ""
+    local visible = pane.visible and "[显示]" or "[隐藏]"
     return {
       kind = "pane",
-      text = string.format("[pane %s] %s  %s", pane.id, pane.cmd, path),
+      text = string.format("[pane %s] %s  %s  %s", pane.id, pane.cmd, path, visible),
       pane = pane,
     }
   end
 
   local function build_entries()
     local entries = {}
-    for _, term in ipairs(Snacks.terminal.list()) do
+    for _, term in ipairs(snacks_list()) do
       local e = build_term_entry(term)
       if e then table.insert(entries, e) end
     end
-    if vim.env.TMUX and vim.env.TMUX ~= "" then
-      for _, p in ipairs(list_parked_panes()) do
-        table.insert(entries, build_pane_entry(p))
-      end
+    for _, p in ipairs(tmux_list_all_panes()) do
+      table.insert(entries, build_pane_entry(p))
     end
     return entries
   end
 
   if #build_entries() == 0 then
-    vim.notify("没有可选的 terminal 或 parked pane", vim.log.levels.WARN)
+    vim.notify("没有可选的 terminal 或 tmux pane", vim.log.levels.WARN)
     return
   end
 
   Snacks.picker.pick({
-    source = "terms_and_panes",
-    title = "Terminals & Parked Panes | <ctrl-x> 关闭",
+    source = "terminals_unified",
+    title = "Terminals (mode=" .. M.mode .. ") | <ctrl-x> 关闭",
     finder = build_entries,
     format = function(item) return { { item.text, "Normal" } } end,
     preview = function(ctx)
@@ -390,44 +469,24 @@ local function pick_terminal_or_pane()
       picker:close()
       if not item then return end
       if item.kind == "pane" then
-        -- 切换到 pane 前, 隐藏所有可见的 snacks terminal
-        for _, t in ipairs(Snacks.terminal.list()) do
-          if t:win_valid() then t:hide() end
+        snacks_hide_all()
+        tmux_show_pane(item.pane.id)
+      else
+        if in_tmux() and get_right_pane_id() then
+          tmux_hide_right()
         end
-        show_parked_pane_on_right(item.pane.id)
-      elseif item.kind == "term" then
-        -- 切换到 term 前, 隐藏右侧 tmux pane
-        if vim.env.TMUX and vim.env.TMUX ~= "" and get_right_pane_id() then
-          hide_right_pane()
-        end
-        for _, t in ipairs(Snacks.terminal.list()) do
-          if t:win_valid() then
-            if t == item.term then
-              t:focus()
-              return
-            end
-            local existing_win = t.win
-            if not existing_win then return end
-            t.win = nil
-            vim.api.nvim_win_set_buf(existing_win, item.term.buf)
-            item.term.win = existing_win
-            vim.wo[existing_win].number = false
-            vim.wo[existing_win].relativenumber = false
-            vim.api.nvim_set_current_win(existing_win)
-            return
-          end
-        end
-        item.term:show():focus()
+        snacks_show(item.term)
       end
     end,
     actions = {
       kill_item = function(picker, item)
         if not item then return end
         if item.kind == "pane" then
-          kill_parked_pane(item.pane.id)
-        elseif item.kind == "term" then
+          tmux_kill_pane(item.pane.id)
+        else
           picker.preview:reset()
           item.term:close()
+          mru_remove("snacks", item.buf)
         end
         vim.schedule(function() picker:find({ refresh = true }) end)
       end,
@@ -439,34 +498,44 @@ local function pick_terminal_or_pane()
   })
 end
 
--- ============================================================
--- 顶层 action 包装 (统一做 tmux 检测 + notify)
--- ============================================================
+-- 操作 5: 在编辑窗口内向终端发送 @引用
+function M.send_reference()
+  local mode = vim.fn.mode()
+  local rel_path = vim.fn.expand("%:.")
+  if rel_path == "" then
+    vim.notify("当前 buffer 没有文件路径", vim.log.levels.WARN)
+    return
+  end
 
-local function action_open_or_focus_right_pane()
-  if not in_tmux() then return end
-  open_or_focus_right_pane()
+  local payload
+  if mode == "v" or mode == "V" or mode == "\22" then
+    local s = vim.fn.line("v")
+    local e = vim.fn.line(".")
+    if s > e then s, e = e, s end
+    payload = rel_path .. ":" .. s .. "-" .. e
+    -- 退出 visual 模式
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+  else
+    payload = rel_path
+  end
+
+  vim.fn.setreg("+", payload)
+  local sent = send_to_visible("@" .. payload .. " ")
+  if sent then
+    vim.notify("已复制并引用: " .. payload)
+  else
+    vim.notify("已复制: " .. payload .. " (无可见终端)", vim.log.levels.WARN)
+  end
 end
 
-local function action_create_parked_pane()
-  if not in_tmux() then return end
-  create_parked_pane()
-  vim.notify("已在 parking 中新建 pane")
-end
-
-local function action_hide_right_pane()
-  if not in_tmux() then return end
-  hide_right_pane()
-end
-
 -- ============================================================
--- 快捷键
+-- keymaps
 -- ============================================================
-map("n", "<leader>r",  reference_current_file,            { desc = "引用当前文件路径" })
-map("v", "<leader>r",  reference_selected_range,          { desc = "引用文件路径+选中行号范围" })
-map("n", "<leader>ao",  action_open_or_focus_right_pane,   { desc = "tmux: 打开/聚焦右侧显示槽pane" })
-map("n", "<leader>aa", pick_terminal_or_pane,             { desc = "列出 terminal + parked pane" })
-map("n", "<leader>an", action_create_parked_pane,         { desc = "tmux: 在parking中新建后台pane" })
-map("n", "<leader>as", pick_parked_pane,                  { desc = "tmux: 选择parked pane显示到右侧" })
-map("n", "<leader>ah", action_hide_right_pane,            { desc = "tmux: 隐藏右侧pane(收回parking)" })
-map("n", "<leader>t",  pick_terminal,                     { desc = "列出并选择 terminal" })
+local map = vim.keymap.set
+map("n", "<leader>tm", M.toggle_mode,                                { desc = "terminal: 切换模式 (snacks/tmux)" })
+map("n", "<leader>tn", function() M.new_terminal(vim.v.count1) end,  { desc = "terminal: 新建" })
+map("n", "<leader>tt", M.toggle_terminal,                            { desc = "terminal: 显示/隐藏" })
+map("n", "<leader>tl", M.list_terminals,                             { desc = "terminal: 列出全部" })
+map({ "n", "v" }, "<leader>r", M.send_reference,                     { desc = "terminal: 发送 @引用" })
+
+return M
