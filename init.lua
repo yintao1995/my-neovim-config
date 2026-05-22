@@ -16,8 +16,7 @@ local function paste()
   }
 end
 local platform = vim.loop.os_uname().sysname
-if platform == "Linux" then
-elseif platform == "Darwin" then
+if platform == "Linux" or platform == "Darwin" then
   vim.g.clipboard = {
     name = "OSC 52",
     copy = {
