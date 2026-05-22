@@ -13,10 +13,14 @@
 
 local M = {}
 
-local PARKED_WIN = "_parked"
+-- 隐藏的 tmux pane 寄存在一个独立的 detached session, 每个 pane 占一个 window
+-- 这样 pane 始终独占整个 window 宽度, capture-pane 抓到的内容才是完整宽度
+local PARKED_SESSION = "_nvim_parked"
+local PARKED_W = 250
+local PARKED_H = 80
 
 -- 终端窗口占主窗口的宽度比例 (0~1). 调整这一处即可同步两类终端
-local WIDTH_RATIO = 0.33
+local WIDTH_RATIO = 0.30
 local WIDTH_PERCENT = string.format("%d%%", math.floor(WIDTH_RATIO * 100))
 
 M.mode = (vim.env.TMUX ~= nil and vim.env.TMUX ~= "") and "tmux" or "snacks"
@@ -83,28 +87,29 @@ local function get_right_pane_id()
 end
 
 -- ============================================================
--- parking window 工具
+-- parking session 工具
 -- ============================================================
 
-local function parked_window_exists()
-  local out = tmux_get({ "list-windows", "-t", current_session(), "-F", "#{window_name}" })
+local function parked_session_exists()
+  local out = tmux_get({ "list-sessions", "-F", "#{session_name}" })
   for line in out:gmatch("[^\n]+") do
-    if line == PARKED_WIN then return true end
+    if line == PARKED_SESSION then return true end
   end
   return false
 end
 
-local function ensure_parked_window()
-  if not parked_window_exists() then
-    tmux_run({ "new-window", "-d", "-n", PARKED_WIN })
+local function ensure_parked_session()
+  if not parked_session_exists() then
+    -- detached, 显式指定尺寸, 避免无 client attach 时被压缩
+    tmux_run({ "new-session", "-d", "-s", PARKED_SESSION, "-x", tostring(PARKED_W), "-y", tostring(PARKED_H) })
   end
 end
 
 local function list_parked_panes()
-  if not parked_window_exists() then return {} end
-  local target = current_session() .. ":" .. PARKED_WIN
+  if not parked_session_exists() then return {} end
+  -- -s 列出 session 下全部 window 的全部 pane
   local out = tmux_get({
-    "list-panes", "-t", target,
+    "list-panes", "-s", "-t", PARKED_SESSION,
     "-F", "#{pane_id}\t#{pane_current_command}\t#{pane_title}\t#{pane_current_path}",
   })
   local items = {}
@@ -219,30 +224,28 @@ local function tmux_create_right_pane()
   return new_id
 end
 
-local function tmux_show_pane(pane_id)
-  local slot = get_right_pane_id()
-  if slot then
-    -- 已有 slot: swap 把目标 pane 换到右侧, 原 slot 进入 parking
-    tmux_run({ "swap-pane", "-d", "-s", pane_id, "-t", slot })
-  else
-    -- 无 slot: 直接 join-pane 把 parked pane 移到 nvim 右侧
-    local nv = nvim_pane_id()
-    tmux_run({ "join-pane", "-d", "-h", "-l", WIDTH_PERCENT, "-s", pane_id, "-t", nv })
-  end
-  mru_touch("tmux", pane_id)
-end
-
 local function tmux_hide_right()
   local slot = get_right_pane_id()
   if not slot then return end
-  ensure_parked_window()
-  local target = current_session() .. ":" .. PARKED_WIN
-  tmux_run({ "join-pane", "-d", "-h", "-s", slot, "-t", target })
+  ensure_parked_session()
+  -- 把 slot pane break 出去, 作为 parked session 末尾的新 window, 独占整 window 宽度
+  tmux_run({ "break-pane", "-d", "-a", "-s", slot, "-t", PARKED_SESSION .. ":" })
+end
+
+local function tmux_show_pane(pane_id)
+  -- 先把右侧已有 slot 收回 parking, 保证一次只显示一个
+  if get_right_pane_id() then
+    tmux_hide_right()
+  end
+  -- 把目标 pane 从 parking session join 到 nvim 右侧
+  local nv = nvim_pane_id()
+  tmux_run({ "join-pane", "-d", "-h", "-l", WIDTH_PERCENT, "-s", pane_id, "-t", nv })
+  mru_touch("tmux", pane_id)
 end
 
 -- 新建 pane (直接在右侧创建, 不走 parking)
 local function tmux_new_pane()
-  ensure_parked_window()
+  ensure_parked_session()
   -- 如果右侧已经有 slot, 先把它收回 parking
   if get_right_pane_id() then
     tmux_hide_right()
@@ -457,7 +460,7 @@ function M.list_terminals()
       if not item then return end
       if item.kind == "pane" then
         ctx.preview:set_title("pane " .. item.pane.id)
-        Snacks.picker.preview.cmd({ "tmux", "capture-pane", "-t", item.pane.id, "-p", "-e", "-J" }, ctx)
+        Snacks.picker.preview.cmd({ "tmux", "capture-pane", "-t", item.pane.id, "-p", "-e" }, ctx)
       elseif item.kind == "term" then
         ctx.preview:set_title("term #" .. item.info.id)
         if vim.api.nvim_buf_is_valid(item.buf) then
