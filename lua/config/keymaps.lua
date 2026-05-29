@@ -9,7 +9,7 @@ map("n", "<leader>gf", "<cmd>DiffviewFileHistory %<cr>", { desc = "git history o
 map("n", "<leader>fs", "<cmd>AutoSession search<cr>", { desc = "find a session" })
 
 -- 左侧neo-tree目录下按backspace键可退至上一层目录
---
+-- 当前打开的buffer跟目的文件做diff: vertical diffsplit init.lua
 
 
 
@@ -39,3 +39,4 @@ map("n", "<leader>fd", "<cmd>FzfLua tags_grep_cword<cr>", { desc = "grep definit
 map("n", "<leader>gd", "<cmd>Lspsaga peek_definition<cr>", { desc = "lspsaga: go to peek_definition" })
 -- <leader>sr  插件grug-far.nvim, 查找并替换
 map("n", "<leader>fB", "<cmd>Telescope bookmarks<cr>", { desc = "open bookmarks list" })
+

@@ -432,6 +432,14 @@ function M.list_terminals()
     }
   end
 
+  local function entry_path(e)
+    if e.kind == "term" then
+      return e.info and e.info.cwd or ""
+    else
+      return e.pane and e.pane.path or ""
+    end
+  end
+
   local function build_entries()
     local entries = {}
     for _, term in ipairs(snacks_list()) do
@@ -441,7 +449,18 @@ function M.list_terminals()
     for _, p in ipairs(tmux_list_all_panes()) do
       table.insert(entries, build_pane_entry(p))
     end
-    return entries
+
+    -- 当前项目路径匹配的优先排在前面 (稳定排序)
+    local cwd = vim.fn.getcwd()
+    local matched, others = {}, {}
+    for _, e in ipairs(entries) do
+      if entry_path(e) == cwd then
+        table.insert(matched, e)
+      else
+        table.insert(others, e)
+      end
+    end
+    return vim.list_extend(matched, others)
   end
 
   if #build_entries() == 0 then
