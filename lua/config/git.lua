@@ -3,8 +3,57 @@ require("gitsigns").setup({
   current_line_blame_formatter = '<abbrev_sha>, <author>, <author_time:%Y-%m-%d %H:%M:%S> - <summary>',
 })
 
+local function git_floating(cmd)
+  return function()
+    Snacks.terminal(cmd, {
+      win = { position = "float", width = 0.9, height = 0.85 },
+    })
+  end
+end
+
+local git_commit_floating = git_floating("GIT_EDITOR=nvim git commit")
+local git_commit_amend_floating = git_floating("GIT_EDITOR=nvim git commit --amend")
+local git_push_floating = git_floating("git push")
+local git_push_force_floating = git_floating("git push -f")
+
 require("diffview").setup({
   enhanced_diff_hl = true,
+  -- 弥补 diffview 只监听 .git/index 不监听 HEAD 的缺陷:
+  -- commit/amend/reset/checkout 都会写入 .git/logs/HEAD, 监听它实现自动刷新
+  hooks = {
+    view_opened = function(view)
+      if not (view.adapter and view.adapter.ctx and view.adapter.ctx.dir) then
+        return
+      end
+      local logs_head = view.adapter.ctx.dir .. "/logs/HEAD"
+      local w = vim.uv.new_fs_poll()
+      w:start(logs_head, 1000, vim.schedule_wrap(function(err)
+        if not err and view.ready and not view.closing:check() then
+          view:update_files()
+        end
+      end))
+      view._head_watcher = w
+    end,
+    view_closed = function(view)
+      if view._head_watcher then
+        view._head_watcher:stop()
+        view._head_watcher:close()
+        view._head_watcher = nil
+      end
+    end,
+  },
+  keymaps = {
+    file_panel = {
+      { "n", "gc", git_commit_floating, { desc = "git commit (floating terminal)" } },
+      { "n", "ga", git_commit_amend_floating, { desc = "git commit  --amend (floating terminal)" } },
+      { "n", "gp", git_push_floating, { desc = "git push (floating terminal)" } },
+      { "n", "gf", git_push_force_floating, { desc = "git push -f (floating terminal)" } },
+    },
+    view = {
+      { "n", "gc", git_commit_floating, { desc = "git commit (floating terminal)" } },
+      { "n", "ga", git_commit_amend_floating, { desc = "git commit  --amend (floating terminal)" } },
+      { "n", "gp", git_push_floating, { desc = "git push (floating terminal)" } },
+      { "n", "gf", git_push_force_floating, { desc = "git push -f (floating terminal)" } },
+    },
+  },
 })
-
-
