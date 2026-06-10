@@ -8,34 +8,3 @@ require("diffview").setup({
 })
 
 
-local gitsigns = require('gitsigns')
-local cache = require('gitsigns.cache').cache
-local async = require('gitsigns.async')
-
-local api = vim.api
-
-vim.api.nvim_create_user_command("OpenCommitInfoOfCurrLine", function() async.run(function()
-    local bufnr = api.nvim_get_current_buf()
-    local bcache = cache[bufnr]
-    if not bcache then
-        return
-    end
-    bcache:get_blame()
-
-    local blame = bcache.blame
-    if not blame then
-        return
-    end
-
-    local blm_win = api.nvim_get_current_win()
-    local cursor = unpack(api.nvim_win_get_cursor(blm_win))
-    local entry = blame.entries[cursor]
-    local cur_sha = entry.commit.abbrev_sha
-    local command = string.format("DiffviewOpen %s^!", cur_sha)
-    vim.cmd(command)
-end) end, {})
-
-local map = vim.keymap.set
--- find the commit of current line, and open all diff view of that commit
-map("n", "<leader>ga", "<cmd>OpenCommitInfoOfCurrLine<cr>", { desc = "diffview of commit of current line" })
-map("n", "<leader>gr", "<cmd>Gitsigns reset_buffer<cr>", { desc = "restore current buffer" })

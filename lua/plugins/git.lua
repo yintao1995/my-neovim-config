@@ -7,4 +7,19 @@ return {
   {
     "sindrets/diffview.nvim",
   },
+  {
+    "folke/snacks.nvim",
+    opts = {
+      gitbrowse = {
+        url_patterns = {
+          ["git%.corp%.kuaishou%.com"] = {
+            branch = "/-/tree/{branch}",
+            file = "/-/blob/{branch}/{file}#L{line_start}-{line_end}",
+            permalink = "/-/blob/{commit}/{file}#L{line_start}-{line_end}",
+            commit = "/-/commit/{commit}",
+          },
+        },
+      },
+    },
+  }
 }

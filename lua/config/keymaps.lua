@@ -40,3 +40,62 @@ map("n", "<leader>gd", "<cmd>Lspsaga peek_definition<cr>", { desc = "lspsaga: go
 -- <leader>sr  插件grug-far.nvim, 查找并替换
 map("n", "<leader>fB", "<cmd>Telescope bookmarks<cr>", { desc = "open bookmarks list" })
 
+local cache = require("gitsigns.cache").cache
+local async = require("gitsigns.async")
+
+local api = vim.api
+
+--- 异步获取当前行的 blame commit 信息, 并通过回调处理
+---@param cb fun(entry: table) 回调, entry.commit.sha / entry.commit.abbrev_sha 可用
+local function with_current_line_commit(cb)
+  async.run(function()
+    local bufnr = api.nvim_get_current_buf()
+    local bcache = cache[bufnr]
+    if not bcache then
+      return
+    end
+    bcache:get_blame()
+    local blame = bcache.blame
+    if not blame then
+      return
+    end
+    local cursor = api.nvim_win_get_cursor(0)[1]
+    local entry = blame.entries[cursor]
+    if not entry or not entry.commit or not entry.commit.sha or entry.commit.sha:match("^0+$") then
+      vim.schedule(function()
+        vim.notify("No commit found for current line", vim.log.levels.WARN)
+      end)
+      return
+    end
+    vim.schedule(function()
+      cb(entry)
+    end)
+  end)
+end
+
+api.nvim_create_user_command("OpenCommitInfoOfCurrLine", function()
+  with_current_line_commit(function(entry)
+    vim.cmd(string.format("DiffviewOpen %s^!", entry.commit.abbrev_sha))
+  end)
+end, {})
+
+-- find the commit of current line, and open all diff view of that commit
+map("n", "<leader>ga", "<cmd>OpenCommitInfoOfCurrLine<cr>", { desc = "diffview of commit of current line" })
+map("n", "<leader>gr", "<cmd>Gitsigns reset_buffer<cr>", { desc = "restore current buffer" })
+
+-- 覆盖snacks插件默认的gB: 打开当前行 blame commit 对应的 GitHub 页面; 如果是公司内部git, 需要在plugins/git.lua中配置
+map("n", "<leader>gB", function()
+  with_current_line_commit(function(entry)
+    Snacks.gitbrowse({
+      what = "commit",
+      commit = entry.commit.sha,
+      -- 自定义 open: 在 :messages 中打印链接(SSH无GUI时方便复制), 同时尝试浏览器打开
+      open = function(url)
+        vim.api.nvim_echo({ { "Git Browse: ", "Title" }, { url, "Underlined" } }, true, {})
+        vim.fn.setreg("+", url)
+        vim.ui.open(url)
+      end,
+    })
+  end)
+end, { desc = "git browse: open blame commit" })
+
