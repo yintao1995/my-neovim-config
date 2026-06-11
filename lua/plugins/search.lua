@@ -17,7 +17,7 @@ return {
       },
     },
     files = {
-      path_shorten = 10,
+      path_shorten = 20, -- 搜索时目录最多展示多少个字符, 比如abcdefg/abcdefgh/main.cpp 只展示为 abc/abc/main.cpp
       rg_opts      = [[--color=never --hidden --files -g "!.git" -g "!.cache"]], -- fzf搜索文件时过滤某些目录
     },
     diagnostics = {
