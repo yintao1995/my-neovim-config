@@ -32,12 +32,52 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
+local dv_ignore = require("config.diffview_ignore")
+dv_ignore.setup_filter()
+
+-- 在 file panel 上按 dd: 屏蔽光标处的目录/文件, 并重开视图使其生效
+local function diffview_ignore_entry()
+  local view = require("diffview.lib").get_current_view()
+  local item = view and view.panel and view.panel:get_item_at_cursor()
+  if not item or not item.path or item.path == "" then
+    vim.notify("No entry under cursor", vim.log.levels.WARN)
+    return
+  end
+  local ok, err = dv_ignore.add(item.path)
+  if not ok then
+    vim.notify(err, vim.log.levels.ERROR)
+    return
+  end
+  vim.notify("Ignored: " .. item.path, vim.log.levels.INFO)
+  require("diffview").close()
+  vim.schedule(function()
+    vim.cmd("DiffviewOpen")
+  end)
+end
+
 require("diffview").setup({
   enhanced_diff_hl = true,
   -- 弥补 diffview 只监听 .git/index 不监听 HEAD 的缺陷:
   -- commit/amend/reset/checkout 都会写入 .git/logs/HEAD, 监听它实现自动刷新
   hooks = {
     view_opened = function(view)
+      -- 在 "Showing changes for:" 下展示被屏蔽的条目.
+      -- panel.path_args 只用于渲染 (实际 git 调用走 view.path_args),
+      -- 所以这里直接放 .diffview-ignore 里的原始名字, 避免显示成长路径
+      if view.panel then
+        local toplevel = view.adapter and view.adapter.ctx and view.adapter.ctx.toplevel
+        local entries = dv_ignore.entries(toplevel)
+        if #entries > 0 then
+          view.panel.path_args = entries
+          vim.schedule(function()
+            if view.panel and view.panel:is_open() then
+              view.panel:render()
+              view.panel:redraw()
+            end
+          end)
+        end
+      end
+
       if not (view.adapter and view.adapter.ctx and view.adapter.ctx.dir) then
         return
       end
@@ -60,6 +100,7 @@ require("diffview").setup({
   },
   keymaps = {
     file_panel = {
+      { "n", "dd", diffview_ignore_entry, { desc = "ignore this dir/file in diffview (persist to .diffview-ignore)" } },
       { "n", "gc", git_commit_floating, { desc = "git commit (floating terminal)" } },
       { "n", "ga", git_commit_amend_floating, { desc = "git commit  --amend (floating terminal)" } },
       { "n", "gp", git_push_floating, { desc = "git push (floating terminal)" } },

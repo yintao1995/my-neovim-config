@@ -117,6 +117,8 @@ end, {})
 -- find the commit of current line, and open all diff view of that commit
 map("n", "<leader>ga", "<cmd>OpenCommitInfoOfCurrLine<cr>", { desc = "diffview of commit of current line" })
 map("n", "<leader>gr", "<cmd>Gitsigns reset_buffer<cr>", { desc = "restore current buffer" })
+-- 打开 diffview; .diffview-ignore 里记录的目录/文件会被过滤掉
+-- (在 file panel 上按 dd 追加条目; 取消屏蔽直接手动编辑该文件)
 map("n", "<leader>go", "<cmd>DiffviewOpen<cr>", { desc = "git view open by DiffviewOpen" })
 map("n", "<leader>gs", function()
   vim.ui.input({ prompt = "git show commit: " }, function(commit)
